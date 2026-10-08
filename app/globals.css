@@ -16,7 +16,7 @@
    * that reach further — widening one without the other clips them mid-impact.
    * Change this one value to resize the card.
    */
-  --auth-card-width: 520px;
+  --auth-card-width: 600px;
 }
 
 * {
