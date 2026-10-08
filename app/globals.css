@@ -31,10 +31,10 @@
  * Every size in this project is expressed in rem, including the inline
  * `fontSize` styles in the page components. Raising the root font size scales
  * the entire app in one place — bumping individual rules would only fix the
- * few pages someone remembered. 120% turns the 16px default into 19.2px.
+ * few pages someone remembered. 125% turns the 16px default into 20px.
  */
 html {
-  font-size: 120%;
+  font-size: 125%;
 }
 
 body {
