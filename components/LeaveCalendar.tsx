@@ -1,5 +1,5 @@
 "use client";
-import { useLeaves, LeaveRequest } from "@/context/LeaveContext";
+import { useLeaves } from "@/context/LeaveContext";
 import { useState, useMemo } from "react";
 
 export default function LeaveCalendar() {

@@ -62,7 +62,7 @@ export default function AboutUs() {
           <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>⚡</div>
           <h3>Fast Approvals</h3>
           <p style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>
-            Direct notifications to managers ensure your requests don't sit in an inbox.
+            Direct notifications to managers ensure your requests don&apos;t sit in an inbox.
           </p>
         </div>
         <div className="card" style={{ textAlign: "center" }}>
