@@ -104,9 +104,14 @@ export default function AuthScreen({ initialMode = "login" }: { initialMode?: Au
       setError("");
       setSwap({ to: next, dir, cycle: Date.now() });
 
-      // Keep the URL meaningful for reloads without triggering a navigation.
-      window.history.replaceState(null, "", next === "signup" ? "/signup" : "/login");
-
+      /*
+       * The URL is deliberately left alone. `history.replaceState` integrates
+       * with the Next.js Router, so rewriting /login to /signup makes the
+       * router re-render that segment and remount this component — which
+       * cancels the timers below and kills the animation mid-flight. The swap
+       * stays local React state; /signup still renders the signup form for
+       * anyone arriving on that URL directly.
+       */
       timers.current.push(
         setTimeout(() => {
           setMode(next);
