@@ -10,6 +10,13 @@
   --warning: #f59e0b;
   --border: #e5e7eb;
   --radius: 8px;
+  /*
+   * Width of the login/signup card. The crash clip box is derived from this
+   * rather than hard-coded, because a wider card means a wider car and shards
+   * that reach further — widening one without the other clips them mid-impact.
+   * Change this one value to resize the card.
+   */
+  --auth-card-width: 520px;
 }
 
 * {
@@ -313,7 +320,7 @@ td {
   border: 1px solid var(--border);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   width: 100%;
-  max-width: 400px;
+  max-width: var(--auth-card-width);
   background-color: rgba(255, 255, 255, 0.192);
   backdrop-filter: blur(10px);
 }
@@ -397,7 +404,9 @@ td {
  */
 .crash-viewport {
   position: relative;
-  width: min(100%, 880px);
+  /* 2.2x the card is wide enough for the car, which travels 2.41x its own
+     width of 64%, to reach the card without its tail being clipped. */
+  width: min(100%, calc(var(--auth-card-width) * 2.2));
   /* Clips the car as it enters from off-screen and stops debris from creating
      a horizontal scrollbar mid-animation. */
   overflow: hidden;
@@ -406,7 +415,7 @@ td {
 .crash-stage {
   position: relative;
   width: 100%;
-  max-width: 400px;
+  max-width: var(--auth-card-width);
   margin: 0 auto;
 }
 
