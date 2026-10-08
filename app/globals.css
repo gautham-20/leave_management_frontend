@@ -24,10 +24,10 @@
  * Every size in this project is expressed in rem, including the inline
  * `fontSize` styles in the page components. Raising the root font size scales
  * the entire app in one place — bumping individual rules would only fix the
- * few pages someone remembered. 112.5% turns the 16px default into 18px.
+ * few pages someone remembered. 120% turns the 16px default into 19.2px.
  */
 html {
-  font-size: 112.5%;
+  font-size: 120%;
 }
 
 body {
@@ -46,15 +46,23 @@ body {
 }
 
 /* --- Layout --- */
+/*
+ * Every page renders inside this one container (see app/layout.tsx), so the
+ * width is set here rather than per page. It stretches to fill the viewport
+ * and only stops growing at 1680px, where line lengths and table columns start
+ * getting hard to track — past that a few empty columns at the edge read better
+ * than a stretched-out layout.
+ */
 .container {
-  max-width: 1100px;
+  width: 100%;
+  max-width: 1680px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 2rem clamp(1rem, 2.5vw, 3rem);
 }
 
 .grid-3 {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
   gap: 1.5rem;
   margin-bottom: 2rem;
 }
@@ -361,29 +369,45 @@ td {
   border-radius: 4px;
 }
 
-/* --- Login → signup crash sequence ---
+/* --- Login <-> signup crash sequence ---
  *
- * Pressing "Sign up" sends a car in from the right; it hits the sign-in card
- * and the card bursts into shards, and the signup form rises out of the
- * wreckage.
+ * Pressing "Sign up" sends a car in from the right; pressing "Sign in" sends
+ * one in from the left. Either way it hits the card, the card bursts into
+ * shards, and the other form rises out of the wreckage.
  *
- * One CSS timeline drives every layer (they are all `both`-filled animations
- * sharing a 420ms impact delay), so the pieces cannot drift apart. The
- * component only has to swap the mounted form at SIGNUP_MS, which is why the
- * timings below are the single source of truth for the choreography.
+ * Direction is carried by custom properties set inline by the component on
+ * .crash-stage, so one set of keyframes drives both ways:
  *
- *   0ms    car starts charging from off-screen right
+ *   --crash-dir  +1 when the car enters from the right, -1 from the left
+ *   --impact-x   where along the card the impact lands (76% / 24%)
+ *   --car-*      the car's travel distances, which are not a plain sign flip
+ *                because the car is also mirrored to face its direction
+ *
+ * One CSS timeline drives every layer: they are all both-filled animations
+ * sharing the 420ms impact delay, so the pieces cannot drift apart. The
+ * component's only job is to swap the mounted form at SIGNUP_MS.
+ *
+ *   0ms    car starts charging in from off-screen
  *   420ms  impact: flash, shockwave ring, shards, debris, card recoil
- *   520ms  signup form erupts from the impact and settles in the centre
+ *   520ms  the other form erupts from the impact and settles in the centre
  *   1500ms everything has faded and the card is interactive again
  *
  * Layer order matters: the car sits above the shards (z-index 6 vs 5) so it
  * visibly smashes through them.
  */
+.crash-viewport {
+  position: relative;
+  width: min(100%, 880px);
+  /* Clips the car as it enters from off-screen and stops debris from creating
+     a horizontal scrollbar mid-animation. */
+  overflow: hidden;
+}
+
 .crash-stage {
   position: relative;
   width: 100%;
   max-width: 400px;
+  margin: 0 auto;
 }
 
 .crash-layer {
@@ -402,27 +426,32 @@ td {
     transform: translate3d(0, 0, 0);
   }
   14% {
-    transform: translate3d(-13px, 4px, 0) rotate(-0.8deg);
+    transform: translate3d(calc(var(--crash-dir, 1) * -13px), 4px, 0)
+      rotate(calc(var(--crash-dir, 1) * -0.8deg));
   }
   32% {
-    transform: translate3d(10px, -5px, 0) rotate(0.7deg);
+    transform: translate3d(calc(var(--crash-dir, 1) * 10px), -5px, 0)
+      rotate(calc(var(--crash-dir, 1) * 0.7deg));
   }
   52% {
-    transform: translate3d(-7px, 3px, 0) rotate(-0.4deg);
+    transform: translate3d(calc(var(--crash-dir, 1) * -7px), 3px, 0)
+      rotate(calc(var(--crash-dir, 1) * -0.4deg));
   }
   72% {
-    transform: translate3d(4px, -2px, 0) rotate(0.25deg);
+    transform: translate3d(calc(var(--crash-dir, 1) * 4px), -2px, 0)
+      rotate(calc(var(--crash-dir, 1) * 0.25deg));
   }
   100% {
     transform: translate3d(0, 0, 0);
   }
 }
 
-/* The car. Faces left via a flipped inner SVG so the charge animation is free
- * to use scaleX for speed lines without mirroring the artwork. */
+/* The car. Positioned at the left edge of the stage and flown in with inline
+ * --car-* distances; the artwork is mirrored in the component so the front
+ * faces the direction of travel. */
 .crash-car {
   position: absolute;
-  right: -7%;
+  left: 0;
   top: 50%;
   width: 64%;
   z-index: 6;
@@ -433,16 +462,19 @@ td {
 
 @keyframes crash-charge {
   0% {
-    transform: translateY(-50%) translateX(165%) scaleX(1.1) scaleY(0.94);
+    transform: translateY(-50%) translateX(var(--car-from, 265%)) scaleX(1.1)
+      scaleY(0.94);
   }
   55% {
-    transform: translateY(-50%) translateX(-9%) scaleX(1.05) scaleY(0.99);
+    transform: translateY(-50%) translateX(var(--car-overshoot, -9%)) scaleX(1.05)
+      scaleY(0.99);
   }
   80% {
-    transform: translateY(-50%) translateX(3%) scaleX(0.98) scaleY(1.03);
+    transform: translateY(-50%) translateX(var(--car-recoil, 3%)) scaleX(0.98)
+      scaleY(1.03);
   }
   100% {
-    transform: translateY(-50%) translateX(0) scaleX(1) scaleY(1);
+    transform: translateY(-50%) translateX(var(--car-to, 156%)) scaleX(1) scaleY(1);
   }
 }
 
@@ -458,10 +490,10 @@ td {
     transform: rotate(0deg);
   }
   60% {
-    transform: rotate(-1080deg);
+    transform: rotate(var(--wheel-mid, -1080deg));
   }
   100% {
-    transform: rotate(-1440deg);
+    transform: rotate(var(--wheel-end, -1440deg));
   }
 }
 
@@ -479,7 +511,7 @@ td {
     opacity: 1;
   }
   100% {
-    transform: translateY(-50%) translateX(16%) scale(0.9, 0.7);
+    transform: translateY(-50%) translateX(var(--car-crush, 16%)) scale(0.9, 0.7);
     opacity: 0;
   }
 }
@@ -489,7 +521,7 @@ td {
   position: absolute;
   inset: -45%;
   background: radial-gradient(
-    circle at 76% 50%,
+    circle at var(--impact-x, 76%) 50%,
     #ffffff 0%,
     rgba(255, 233, 168, 0.95) 18%,
     rgba(255, 138, 0, 0.55) 34%,
@@ -513,13 +545,14 @@ td {
   }
 }
 
+/* Centred on the impact point rather than pinned to one side. */
 .crash-ring {
   position: absolute;
-  right: -4%;
+  left: var(--impact-x, 76%);
   top: 50%;
   width: 110px;
   height: 110px;
-  margin-top: -55px;
+  margin: -55px 0 0 -55px;
   border: 3px solid rgba(255, 214, 102, 0.95);
   border-radius: 50%;
   animation: crash-ring 520ms 420ms cubic-bezier(0.15, 0.75, 0.35, 1) both;
@@ -537,7 +570,8 @@ td {
 }
 
 /* One element per shard. Each fills the card and is clipped to a polygon, so
- * together they tile the card; `--shard-x/y/rot` throw it outward on impact. */
+ * together they tile the card. The component negates the throw distance when
+ * the car comes from the left, so the debris always flies away from the hit. */
 .crash-shard {
   position: absolute;
   inset: 0;
@@ -557,7 +591,7 @@ td {
   }
   100% {
     transform: translate3d(var(--shard-x, 0), var(--shard-y, 0), 0)
-      rotate(var(--shard-rot, 0deg));
+      rotate(calc(var(--crash-dir, 1) * var(--shard-rot, 0deg)));
     opacity: 0;
   }
 }
@@ -565,7 +599,7 @@ td {
 /* Sparks and glass chips thrown out of the impact. */
 .crash-debris {
   position: absolute;
-  left: 78%;
+  left: var(--impact-x, 78%);
   top: 50%;
   width: var(--debris-size, 7px);
   height: var(--debris-size, 7px);
@@ -585,13 +619,13 @@ td {
   }
   100% {
     transform: translate3d(var(--debris-x, 0), var(--debris-y, 0), 0)
-      rotate(var(--debris-rot, 0deg));
+      rotate(calc(var(--crash-dir, 1) * var(--debris-rot, 0deg)));
     opacity: 0;
   }
 }
 
-/* The sign-in form gives out on impact. Deliberately short: it must be fully
- * transparent by the time the signup form mounts, or the two would overlap. */
+/* The outgoing form gives out on impact. Deliberately short: it must be fully
+ * transparent by the time the incoming form mounts, or the two would overlap. */
 .crash-panel--break {
   animation: crash-panel-break 100ms 420ms ease-out both;
 }
@@ -611,25 +645,26 @@ td {
   }
 }
 
-/* The signup form erupts from the impact and settles into the centre. The
- * overshoot past 100% is what makes it read as bursting out of something. */
+/* The incoming form erupts from the impact and settles into the centre. The
+ * overshoot past 100% is what makes it read as bursting out of something, and
+ * it enters from the side the car came from. */
 .crash-panel--emerge {
   animation: crash-emerge 680ms cubic-bezier(0.2, 1.25, 0.35, 1) both;
 }
 
 @keyframes crash-emerge {
   0% {
-    transform: translate3d(30px, 14px, 0) scale(0.68);
+    transform: translate3d(calc(var(--crash-dir, 1) * 30px), 14px, 0) scale(0.68);
     opacity: 0;
     filter: blur(7px);
   }
   45% {
-    transform: translate3d(-5px, -3px, 0) scale(1.06);
+    transform: translate3d(calc(var(--crash-dir, 1) * -5px), -3px, 0) scale(1.06);
     opacity: 1;
     filter: blur(0);
   }
   72% {
-    transform: translate3d(2px, 1px, 0) scale(0.99);
+    transform: translate3d(calc(var(--crash-dir, 1) * 2px), 1px, 0) scale(0.99);
   }
   100% {
     transform: translate3d(0, 0, 0) scale(1);
@@ -642,7 +677,7 @@ td {
   position: absolute;
   inset: 0;
   background: radial-gradient(
-    circle at 76% 50%,
+    circle at var(--impact-x, 76%) 50%,
     rgba(203, 213, 225, 0.5),
     rgba(203, 213, 225, 0) 55%
   );
@@ -660,22 +695,6 @@ td {
   }
 }
 
-/* Going back to sign-in is a plain slide — the joke only lands once. */
-.crash-panel--slide-back {
-  animation: crash-slide-back 380ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
-}
-
-@keyframes crash-slide-back {
-  0% {
-    transform: translate3d(34px, 0, 0);
-    opacity: 0;
-  }
-  100% {
-    transform: translate3d(0, 0, 0);
-    opacity: 1;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   /* No car, no debris. The component still swaps the form, just instantly. */
   .crash-card--hit,
@@ -688,8 +707,7 @@ td {
   .crash-debris,
   .crash-dust,
   .crash-panel--break,
-  .crash-panel--emerge,
-  .crash-panel--slide-back {
+  .crash-panel--emerge {
     animation: none;
   }
 }

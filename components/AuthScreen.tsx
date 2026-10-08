@@ -14,6 +14,11 @@ const IMPACT_MS = 420; // car arrives — every debris layer starts here
 const SIGNUP_MS = IMPACT_MS + 100; // signup form erupts, 100ms after impact
 const TOTAL_MS = 1500; // all overlays have faded; card is interactive again
 
+/** Flip the sign of a CSS length such as "-120px", for a mirrored throw. */
+function mirror(value: string): string {
+  return value.startsWith("-") ? value.slice(1) : `-${value}`;
+}
+
 /** Read a thrown value as a message without falling back to `any`. */
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
@@ -47,13 +52,34 @@ const DEBRIS: Array<{ x: string; y: string; rot: string; size: string; color: st
   { x: "200px", y: "150px", rot: "320deg", size: "7px", color: "#fdba74", dur: 810, delay: 442 },
 ];
 
-/** Side-on car, mirrored so the front faces left, toward the card. */
-function Car() {
+/**
+ * Side-on car. The artwork is drawn facing right, so it is mirrored for a car
+ * coming from the right (heading to signup) and left as-is for one coming from
+ * the left. Travel distances are handed to CSS as custom properties: they are
+ * not a plain sign flip, because where the nose ends up depends on which way
+ * the car faces.
+ */
+function Car({ dir }: { dir: 1 | -1 }) {
+  // translateX percentages resolve against the car's own width (64% of the
+  // 400px stage = 256px), not the stage, so these are not readable as px.
+  // --car-to places the nose 40px inside the card edge, which reads as a
+  // smash rather than a bump, while keeping the tail inside .crash-viewport.
+  const travel = {
+    "--car-from": dir === 1 ? "265%" : "-265%",
+    "--car-overshoot": dir === 1 ? "148%" : "-92%",
+    "--car-recoil": dir === 1 ? "136%" : "-80%",
+    "--car-to": dir === 1 ? "141%" : "-84%",
+    "--car-crush": dir === 1 ? "16%" : "-16%",
+    // Wheels turn the way the car is travelling.
+    "--wheel-mid": dir === 1 ? "-1080deg" : "1080deg",
+    "--wheel-end": dir === 1 ? "-1440deg" : "1440deg",
+  } as React.CSSProperties;
+
   return (
-    <div className="crash-car">
+    <div className="crash-car" style={travel}>
       <div className="crash-car-wrap">
         <svg viewBox="0 0 200 104" width="100%" aria-hidden="true" focusable="false">
-          <g transform="translate(200 0) scale(-1 1)">
+          <g transform={dir === 1 ? "translate(200 0) scale(-1 1)" : undefined}>
             {/* ground shadow */}
             <ellipse cx="104" cy="92" rx="82" ry="7" fill="#0f172a" opacity="0.18" />
             {/* body */}
@@ -138,9 +164,10 @@ function Field({ label, value, onChange, type = "text", required, autoComplete }
 }
 
 /**
- * Login and signup share one card. Forward, the switch is a crash: a car
- * charges in from the right and the card bursts, with the signup form rising
- * out of the wreckage. Back to sign-in it is a plain slide.
+ * Login and signup share one card, and the switch between them is a crash in
+ * whichever direction you are going: a car charges in from the right for
+ * "Sign up", and from the left for "Sign in". Either way it hits the card, the
+ * card bursts, and the other form rises out of the wreckage.
  *
  * Both `/login` and `/signup` render this; `initialMode` picks the opening form,
  * which keeps the signup URL working for direct visits.
@@ -150,12 +177,15 @@ export default function AuthScreen({ initialMode = "login" }: { initialMode?: Au
 
   const [mode, setMode] = useState<AuthMode>(initialMode);
   /*
-   * Drives the animation. "idle" is the resting state; "crash" and "back" name
-   * the transition currently playing. The cycle number is the remount key that
-   * restarts the CSS animations, and it must not change when a transition ends.
+   * Drives the animation. "idle" is the resting state and "crash" means a car
+   * is mid-impact. `dir` is the side the car came from: +1 entered from the
+   * right (heading to signup), -1 from the left (heading to sign-in). The cycle
+   * number is the remount key that restarts the CSS animations, and it must not
+   * change when a transition ends.
    */
-  const [phase, setPhase] = useState<{ kind: "idle" | "crash" | "back"; cycle: number }>({
+  const [phase, setPhase] = useState<{ kind: "idle" | "crash"; dir: 1 | -1; cycle: number }>({
     kind: "idle",
+    dir: 1,
     cycle: 0,
   });
 
@@ -173,27 +203,33 @@ export default function AuthScreen({ initialMode = "login" }: { initialMode?: Au
     return () => pending.forEach(clearTimeout);
   }, []);
 
-  // Debris values are static, so they are styled once per render of the overlay.
+  /*
+   * Shards and sparks always fly away from the point of impact, so a car
+   * arriving from the left throws them the opposite way. The x distance and the
+   * rotation are mirrored here; the rotation is doubled up by --crash-dir in
+   * the keyframes, so it is passed through unmirrored.
+   */
+  const dir = phase.dir;
   const shardVars = useMemo(
     () =>
       SHARDS.map((s) =>
         ({
           "--shard-clip": s.clip,
-          "--shard-x": s.x,
+          "--shard-x": dir === 1 ? s.x : mirror(s.x),
           "--shard-y": s.y,
           "--shard-rot": s.rot,
           "--shard-dur": `${s.dur}ms`,
           "--shard-delay": `${s.delay}ms`,
         }) as React.CSSProperties,
       ),
-    [],
+    [dir],
   );
 
   const debrisVars = useMemo(
     () =>
       DEBRIS.map((d) =>
         ({
-          "--debris-x": d.x,
+          "--debris-x": dir === 1 ? d.x : mirror(d.x),
           "--debris-y": d.y,
           "--debris-rot": d.rot,
           "--debris-size": d.size,
@@ -202,40 +238,34 @@ export default function AuthScreen({ initialMode = "login" }: { initialMode?: Au
           "--debris-delay": `${d.delay}ms`,
         }) as React.CSSProperties,
       ),
-    [],
+    [dir],
   );
 
   /**
    * The car is driven entirely by CSS; this only has to swap the mounted form
    * once the sign-in panel has faded, and tear the overlays down afterwards.
    */
-  const crashIntoSignup = useCallback(() => {
-    if (phase.kind !== "idle") return;
+  const crashTo = useCallback(
+    (next: AuthMode) => {
+      if (phase.kind !== "idle") return;
 
-    setError("");
-    setPhase({ kind: "crash", cycle: Date.now() });
+      setError("");
+      // Heading to signup: the car comes from the right. Heading back to
+      // sign-in: it comes from the left.
+      setPhase({ kind: "crash", dir: next === "signup" ? 1 : -1, cycle: Date.now() });
 
-    timers.current.push(
-      setTimeout(() => {
-        setMode("signup");
-        // Land the role select on something the signup form actually offers.
-        if (role === "ADMIN") setRole("EMPLOYEE");
-      }, SIGNUP_MS),
-      // Return to idle keeping the same cycle, so the panel is not remounted.
-      setTimeout(() => setPhase((prev) => ({ kind: "idle", cycle: prev.cycle })), TOTAL_MS),
-    );
-  }, [phase.kind, role]);
-
-  const returnToLogin = useCallback(() => {
-    if (phase.kind !== "idle") return;
-
-    setError("");
-    setMode("login");
-    setPhase({ kind: "back", cycle: Date.now() });
-    timers.current.push(
-      setTimeout(() => setPhase((prev) => ({ kind: "idle", cycle: prev.cycle })), 400),
-    );
-  }, [phase.kind]);
+      timers.current.push(
+        setTimeout(() => {
+          setMode(next);
+          // Land the role select on something the signup form actually offers.
+          if (next === "signup" && role === "ADMIN") setRole("EMPLOYEE");
+        }, SIGNUP_MS),
+        // Return to idle keeping the same cycle, so the panel is not remounted.
+        setTimeout(() => setPhase((prev) => ({ ...prev, kind: "idle" })), TOTAL_MS),
+      );
+    },
+    [phase.kind, role],
+  );
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -273,15 +303,27 @@ export default function AuthScreen({ initialMode = "login" }: { initialMode?: Au
   // would be stolen from a field the user had started typing into.
   const panelClass = [
     "auth-panel",
+    // Whichever form is on screen when the car lands is the one that breaks;
+    // the one mounted at SIGNUP_MS is the one that erupts.
     phase.kind === "crash" ? (signingIn ? "crash-panel--break" : "crash-panel--emerge") : "",
-    phase.kind === "back" ? "crash-panel--slide-back" : "",
   ]
     .filter(Boolean)
     .join(" ");
 
   return (
     <div className="auth-wrapper">
-      <div className="crash-stage">
+      {/* Wide clipping box: the car enters from off-screen and the debris flies
+          past the card without dragging a scrollbar along. */}
+      <div className="crash-viewport">
+        <div
+          className="crash-stage"
+          style={
+            {
+              "--crash-dir": dir,
+              "--impact-x": dir === 1 ? "76%" : "24%",
+            } as React.CSSProperties
+          }
+        >
         <div className={phase.kind === "crash" ? "auth-card crash-card--hit" : "auth-card"}>
           {/* Remounting on cycle replays every CSS animation in the sequence. */}
           <div key={phase.cycle} className={panelClass}>
@@ -343,7 +385,7 @@ export default function AuthScreen({ initialMode = "login" }: { initialMode?: Au
                     <button
                       type="button"
                       className="auth-switch"
-                      onClick={crashIntoSignup}
+                      onClick={() => crashTo("signup")}
                       disabled={phase.kind !== "idle"}
                     >
                       Sign up
@@ -410,7 +452,12 @@ export default function AuthScreen({ initialMode = "login" }: { initialMode?: Au
                 <div className="auth-links">
                   <p>
                     Already have an account?{" "}
-                    <button type="button" className="auth-switch" onClick={returnToLogin}>
+                    <button
+                      type="button"
+                      className="auth-switch"
+                      onClick={() => crashTo("login")}
+                      disabled={phase.kind !== "idle"}
+                    >
                       Sign in
                     </button>
                   </p>
@@ -420,24 +467,25 @@ export default function AuthScreen({ initialMode = "login" }: { initialMode?: Au
           </div>
         </div>
 
-        {/* Overlays sit outside the card so they are not clipped by it, and are
-            pointer-events:none so they never intercept the form. */}
-        {phase.kind === "crash" && (
-          <>
-            <div className="crash-layer" key={"fx-" + phase.cycle}>
-              {shardVars.map((style, i) => (
-                <span key={i} className="crash-shard" style={style} />
-              ))}
-              {debrisVars.map((style, i) => (
-                <span key={i} className="crash-debris" style={style} />
-              ))}
-              <span className="crash-ring" />
-              <span className="crash-flash" />
-              <span className="crash-dust" />
-            </div>
-            <Car />
-          </>
-        )}
+          {/* Overlays sit outside the card so they are not clipped by it, and are
+              pointer-events:none so they never intercept the form. */}
+          {phase.kind === "crash" && (
+            <>
+              <div className="crash-layer" key={"fx-" + phase.cycle}>
+                {shardVars.map((style, i) => (
+                  <span key={i} className="crash-shard" style={style} />
+                ))}
+                {debrisVars.map((style, i) => (
+                  <span key={i} className="crash-debris" style={style} />
+                ))}
+                <span className="crash-ring" />
+                <span className="crash-flash" />
+                <span className="crash-dust" />
+              </div>
+              <Car dir={dir} />
+            </>
+          )}
+        </div>
       </div>
 
       {/* Announces the swap for screen readers, since the animation is visual only. */}
